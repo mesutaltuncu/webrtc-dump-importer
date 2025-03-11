@@ -13,6 +13,7 @@ document.getElementById('logFileInput').addEventListener('change', function(even
     }
 });
 
+
 let calls = [];
 
 function parseLogFile(logContent) {
@@ -24,31 +25,89 @@ function parseLogFile(logContent) {
     for (let i = 0; i < logLines.length; i++) {
         const line = logLines[i];
 
-        if (line.toLowerCase().includes('media_established')) {
+        // ✅ conferenceWillJoin ile çağrıyı başlat
+        if (line.includes("conferenceWillJoin received with data")) {
             collecting = true;
             currentCall = { 
                 connectionStats: [],
                 bipRoomName: null 
             };
-        }
 
-        // bipRoomName'i yakala
-        if (collecting && line.includes('"bipRoomName"')) {
-            const roomMatch = line.match(/"bipRoomName"\s*:\s*"([^"]+)"/);
-            if (roomMatch && roomMatch[1]) {
-                currentCall.bipRoomName = roomMatch[1];
+            let jsonStr = line;
+            while (i + 1 < logLines.length && !logLines[i + 1].includes("}")) {
+                jsonStr += logLines[++i];
+            }
+            jsonStr += logLines[++i]; // JSON'un kapanış süslü parantezini ekle
+
+            try {
+                const jsonData = JSON.parse(jsonStr.match(/\{.*\}/s)[0]);
+                if (jsonData.bipRoomName) {
+                    currentCall.bipRoomName = jsonData.bipRoomName;
+                    console.log(`🟢 New Call Started: bipRoomName = ${currentCall.bipRoomName}`);
+                }
+            } catch (e) {
+                console.error("❌ JSON parse error in conferenceWillJoin:", e);
             }
         }
 
-        if (collecting && line.toLowerCase().includes('callstate') && line.toLowerCase().includes('ended')) {
-            collecting = false;
-            if (currentCall) {
-                calls.push(currentCall);
-                currentCall = null;
+        // ✅ do leave satırları ile çağrıyı bitir
+        if (collecting && line.includes("do leave")) {
+            const leaveMatch = line.match(/do leave\s+([\w-]+)@/);
+            if (leaveMatch && leaveMatch[1]) {
+                const leaveBipRoomName = leaveMatch[1];
+
+                console.log(`➡️ Found do leave bipRoomName: ${leaveBipRoomName}`);
+
+                // Eğer alınan bipRoomName ile eşleşiyorsa çağrıyı bitir
+                if (currentCall && currentCall.bipRoomName === leaveBipRoomName) {
+                    collecting = false;
+
+                    // ✅ ConnectionStats boş değilse çağrıyı ekle
+                    if (currentCall.connectionStats.length > 0) {
+                        calls.push(currentCall);
+                        console.log("✅ Call successfully matched and ended:", currentCall);
+                    } else {
+                        console.warn("⚠️ Call ignored due to empty connectionStats:", currentCall);
+                    }
+
+                    currentCall = null;
+                } else {
+                    console.warn("⚠️ bipRoomName mismatch or no active call:", currentCall?.bipRoomName, leaveBipRoomName);
+                }
             }
         }
 
-        if (collecting && line.toLowerCase().includes('connection_stats')) {
+       // ✅ "Got media constraints" satırlarını al (Tümünü kaydet)
+        if (collecting && line.includes("Got media constraints")) {
+            const mediaMatch = line.match(/\{.*\}/s);
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+
+            if (mediaMatch && mediaMatch[0]) {
+                try {
+                    const parsedConstraints = JSON.parse(mediaMatch[0]); // Yeni medya kısıtlaması
+
+                    // Eğer medya kısıtlamaları dizisi yoksa başlat
+                    if (!currentCall.mediaConstraints) {
+                        currentCall.mediaConstraints = [];
+                    }
+
+                    // ✅ Tarih bilgisini de ekle
+                    if (timestampMatch && timestampMatch[1]) {
+                        parsedConstraints.timestamp = timestampMatch[1];
+                    }
+
+                    // ✅ Medya kısıtlamasını diziye ekle
+                    currentCall.mediaConstraints.push(parsedConstraints);
+                    console.log(`🎙️ Media Constraints Captured:`, parsedConstraints);
+                } catch (e) {
+                    console.error("❌ Error parsing media constraints:", e);
+                }
+            }
+        }
+
+
+        // ✅ Eğer çağrı başladıysa, connection stats verilerini ekle
+        if (collecting && currentCall && line.toLowerCase().includes('connection_stats')) {
             const statsJsonMatch = line.match(/CONNECTION_STATS.*?(\{.*\})/);
             const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
             
@@ -58,9 +117,7 @@ function parseLogFile(logContent) {
                     if (timestampMatch && timestampMatch[1]) {
                         stats.timestamp = timestampMatch[1];
                     }
-                    if (currentCall) {
-                        currentCall.connectionStats.push(stats);
-                    }
+                    currentCall.connectionStats.push(stats);
                 } catch (e) {
                     console.error('❌ Error parsing connection stats:', e);
                 }
@@ -76,7 +133,6 @@ function parseLogFile(logContent) {
         console.log('⚠️ No calls found.');
     }
 }
-
 
 function createTabs() {
     const tabContainer = document.getElementById('tabContainer');
@@ -117,8 +173,6 @@ function createTabs() {
 function visualizeCallData(callIndex) {
     const call = calls[callIndex];
 
-
-
     if (!call || !call.connectionStats.length) {
         console.log('⚠️ No data available for visualization.');
         return;
@@ -131,12 +185,56 @@ function visualizeCallData(callIndex) {
 
     const firstTimestamp = call.connectionStats[0]?.timestamp || 'Unknown Timestamp';
 
+    let callerNumber = "Unknown";
+    if (call.bipRoomName) {
+        const match = call.bipRoomName.match(/^(\d+)_/);
+        if (match && match[1]) {
+            callerNumber = match[1];
+        }
+    }
+
     const dateInfo = document.createElement('h3');
     dateInfo.textContent = `Call Date: ${firstTimestamp}`;
     dateInfo.style.textAlign = 'center';
     dateInfo.style.width = '100%';
-    dateInfo.style.marginBottom = '10px';
+    dateInfo.style.marginBottom = '5px';
     container.appendChild(dateInfo);
+
+    // ✅ Caller Number başlığını ekleyelim
+    const callerInfo = document.createElement('h3');
+    callerInfo.textContent = `Caller Number: ${callerNumber}`;
+    callerInfo.style.textAlign = 'center';
+    callerInfo.style.width = '100%';
+    callerInfo.style.marginBottom = '10px';
+    container.appendChild(callerInfo);
+
+    if (call.mediaConstraints && call.mediaConstraints.length > 0) {
+        const detailsContainer = document.createElement('details');
+        detailsContainer.style.width = '100%';
+        detailsContainer.style.marginBottom = '10px';
+
+        const summary = document.createElement('summary');
+        summary.textContent = " Media Constraints";
+        summary.style.cursor = 'pointer';
+        summary.style.fontWeight = 'bold';
+        detailsContainer.appendChild(summary);
+
+        call.mediaConstraints.forEach((constraint, index) => {
+            const constraintItem = document.createElement('pre');
+            constraintItem.textContent = `[${constraint.timestamp}] ${JSON.stringify(constraint, null, 2)}`;
+            constraintItem.style.padding = '5px';
+            constraintItem.style.border = '1px solid #ccc';
+            constraintItem.style.borderRadius = '5px';
+            constraintItem.style.marginTop = '5px';
+            constraintItem.style.whiteSpace = 'pre-wrap';
+            constraintItem.style.backgroundColor = '#f9f9f9';
+            constraintItem.style.fontSize = '12px';
+            detailsContainer.appendChild(constraintItem);
+        });
+
+        container.appendChild(detailsContainer);
+
+    }
 
     const timestamps = call.connectionStats.map(stat => stat.timestamp || 'Unknown');
 
@@ -168,7 +266,7 @@ function visualizeCallData(callIndex) {
             let parsedResolution;
             try {
                 parsedResolution = JSON.parse(stat.resolution); // JSON parse işlemi
-                console.log("📏 Parsed Resolution Data:", parsedResolution);
+              //  console.log("📏 Parsed Resolution Data:", parsedResolution);
             } catch (e) {
                 console.error("❌ Error parsing resolution:", e);
                 return;
@@ -177,7 +275,7 @@ function visualizeCallData(callIndex) {
             Object.keys(parsedResolution).forEach(streamId => {
                 Object.keys(parsedResolution[streamId]).forEach(trackId => {
                     const resolutionData = parsedResolution[streamId][trackId];
-                    console.log(`📏 TrackID: ${trackId}, Width: ${resolutionData.width}, Height: ${resolutionData.height}`);
+                  //  console.log(`📏 TrackID: ${trackId}, Width: ${resolutionData.width}, Height: ${resolutionData.height}`);
     
                     // ✅ Width ekleme
                     if (resolutionData.width) {
@@ -217,11 +315,7 @@ function visualizeCallData(callIndex) {
         }
     });
     
-    // ✅ Metrics Logları
-    console.log("📊 Final Metrics - Width:", widthSeries);
-    console.log("📊 Final Metrics - Height:", heightSeries);
-    console.log("📊 Final Metrics - Framerate:", framerateSeries);
-    
+ 
     // ✅ Metrics'e ekleme
     if (widthSeries.length > 0) {
         metrics.push({ name: 'Width', data: widthSeries, unit: 'px' });
@@ -234,11 +328,10 @@ function visualizeCallData(callIndex) {
     }
     
     // ✅ Highcharts'a veri gidiyor mu?
-    console.log("📈 Sending to Highcharts:", metrics);
+    //console.log("📈 Sending to Highcharts:", metrics);
     
     // ✅ Grafikler Çiziliyor
     metrics.forEach(metric => {
-        console.log(`📊 Drawing Chart for ${metric.name}`, metric);
         const chartContainer = document.createElement('div');
         chartContainer.style.minWidth = "450px";
         chartContainer.style.width = '45%';
@@ -267,7 +360,3 @@ function visualizeCallData(callIndex) {
     });
     
 }
-
-
-
-
