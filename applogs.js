@@ -2,21 +2,22 @@ document.getElementById('logFileInput').addEventListener('change', function(even
     const file = event.target.files[0];
 
     if (file) {
+        document.getElementById('loadingMessage').style.display = 'block'; 
         const reader = new FileReader();
 
         reader.onload = function(e) {
             const logContent = e.target.result;
             parseLogFile(logContent);
+
+            document.getElementById('loadingMessage').style.display = 'none'; 
         };
 
         reader.readAsText(file);
     }
 });
 
-
 let calls = [];
 let myNumber = null; 
-
 
 function parseLogFile(logContent) {
     const logLines = logContent.split('\n');
@@ -37,7 +38,6 @@ function parseLogFile(logContent) {
                 foundMyNumber = true; // **Bulduktan sonra tekrar arama**
             }
         }
-
         // ✅ conferenceWillJoin ile çağrıyı başlat
         if (line.includes("conferenceWillJoin received with data")) {
             collecting = true;
@@ -56,7 +56,6 @@ function parseLogFile(logContent) {
                 const jsonData = JSON.parse(jsonStr.match(/\{.*\}/s)[0]);
                 if (jsonData.bipRoomName) {
                     currentCall.bipRoomName = jsonData.bipRoomName;
-                    console.log(`🟢 New Call Started: bipRoomName = ${currentCall.bipRoomName}`);
                 }
             } catch (e) {
                 console.error("❌ JSON parse error in conferenceWillJoin:", e);
@@ -126,8 +125,6 @@ function parseLogFile(logContent) {
             }
         }
 
-
-
      // ✅ "conferenceUpdateParticipant" satırlarını işle 
         if (collecting && line.includes("conferenceUpdateParticipant received with data")) {
 
@@ -170,7 +167,6 @@ function parseLogFile(logContent) {
                     participantNumbers.forEach(number => {
                         if (number !== callerNumber) {  
                             currentCall.participants.push(number);
-                            console.log(`✅ Participant Added: ${number}`);
                         } else {
                             console.log(`⚠️ Skipping caller number (${number}), it's the same as the caller.`);
                         }
@@ -179,7 +175,6 @@ function parseLogFile(logContent) {
                     // ✅ Eğer çağrıyı biz başlatmadıysak ve numaramız listede yoksa, kendimizi participant olarak ekleyelim
                     if (myNumber && myNumber !== callerNumber && !currentCall.participants.includes(myNumber)) {
                         currentCall.participants.push(myNumber);
-                        console.log(`✅ My Number (${myNumber}) Added as Participant (Not the Caller)`);
                     }
 
                 } else {
@@ -225,9 +220,6 @@ function parseLogFile(logContent) {
                 return;
             }
 
-            // 🔴 DEBUG: `currentCall` gerçekten aktif çağrı mı?
-            console.log(`📞 Aktif Çağrı: ${currentCall.bipRoomName || "Unknown"}`);
-
             // Eğer createOfferOnSuccess dizisi yoksa başlat
             if (!currentCall.createOfferOnSuccess) {
                 currentCall.createOfferOnSuccess = [];
@@ -235,11 +227,6 @@ function parseLogFile(logContent) {
 
             // ✅ SDP'yi diziye ekle
             currentCall.createOfferOnSuccess.push({ timestamp, sdp: sdpContent });
-
-            console.log(`📡 SDP Kaydedildi (${currentCall.bipRoomName} için):`, { timestamp, sdp: sdpContent });
-
-            // 🔴 DEBUG: Şu anki çağrı objesini yazdıralım
-            console.log("🔍 Güncellenmiş currentCall:", JSON.stringify(currentCall, null, 2));
         }
 
        // PEER CONNECTİONS SECTİON *****
@@ -265,7 +252,6 @@ function parseLogFile(logContent) {
 
                     // ✅ Medya kısıtlamasını diziye ekle
                     currentCall.mediaConstraints.push(parsedConstraints);
-                    console.log(`🎙️ Media Constraints Captured:`, parsedConstraints);
                 } catch (e) {
                     console.error("❌ Error parsing media constraints:", e);
                 }
@@ -294,97 +280,122 @@ function parseLogFile(logContent) {
 
                     // ✅ Create dizisine ekle
                     currentCall.create.push(configData);
-                    console.log(`🔗 PeerConnection Created:`, configData);
                 } catch (e) {
                     console.error("❌ Error parsing CreatePeerConnection config:", e);
                 }
             }
         }
 
-        // ✅ "createOffer" satırlarını al (Tümünü kaydet)
+        // ✅ "createOffer" satırlarını al ve JSON'u yakala
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] createOffer")) {
-            const offerMatch = line.match(/\{.*\}/s);
+            let offerStr = line; // İlk satırı ekle
+            let jsonContent = "";
+            let timestamp = "Unknown Timestamp";
+
+            // ✅ Timestamp'i al
             const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            if (timestampMatch) {
+                timestamp = timestampMatch[1];
+            }
 
-            if (offerMatch && offerMatch[0]) {
-                try {
-                    const parsedOffer = JSON.parse(offerMatch[0]); // ✅ Yeni createOffer JSON'u
+            // ✅ JSON kapanış süslü parantezi `}` görene kadar devam eden satırları birleştir
+            while (i + 1 < logLines.length) {
+                const nextLine = logLines[++i];
 
-                    // Eğer createOffer dizisi yoksa başlat
-                    if (!currentCall.createOffers) {
-                        currentCall.createOffers = [];
-                    }
+                // Eğer yeni bir tarih satırı geldiyse işlemi durdur
+                if (nextLine.match(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3}/)) {
+                    console.warn("⚠️ Stopping createOffer capture due to new timestamp.");
+                    i--; // Bir satır geri al ki sonraki if koşulları bozulmasın
+                    break;
+                }
 
-                    // ✅ Tarih bilgisini de ekle
-                    if (timestampMatch && timestampMatch[1]) {
-                        parsedOffer.timestamp = timestampMatch[1];
-                    }
+                offerStr += nextLine;
 
-                    // ✅ createOffer'ı diziye ekle
-                    currentCall.createOffers.push(parsedOffer);
-
-                    // 🔴 Geçici Çözüm: Eğer 2. item varsa ve içinde "candidate" geçiyorsa onu kaldır
-                    if (currentCall.createOffers.length > 1) {
-                        const lastIndex = currentCall.createOffers.length - 1;
-                        const lastOffer = currentCall.createOffers[lastIndex];
-
-                        if ("candidate" in lastOffer) {
-                            console.warn("⚠️ Candidate içeren gereksiz createOffer bulundu, kaldırılıyor:", lastOffer);
-                            currentCall.createOffers.pop(); // Son elemanı kaldır
-                        }
-                    }
-                } catch (e) {
-                    console.error("❌ Error parsing createOffer:", e);
+                // JSON kapanış parantezini gördüysek işlemi sonlandır
+                if (nextLine.includes("}")) {
+                    jsonContent = offerStr.match(/\{.*\}/s);
+                    break;
                 }
             }
-        }
-
-        // ✅ "createOffer" satırlarını al (Tümünü kaydet)
-        if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] createOffer")) {
-
-            let jsonStr = line;
-
-            // JSON kapanış süslü parantezi yoksa devam eden satırları birleştir
-            while (i + 1 < logLines.length && !logLines[i + 1].includes("}")) {
-                jsonStr += logLines[++i];
-            }
-            jsonStr += logLines[++i]; // Kapanış süslü parantezini ekle
-
-            const timestampMatch = jsonStr.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
 
             try {
-                const jsonMatch = jsonStr.match(/\{.*\}/s); // JSON içeriğini güvenli bir şekilde yakala
-                if (jsonMatch) {
-                    const parsedOffer = JSON.parse(jsonMatch[0]); // ✅ createOffer JSON'u al
+                if (jsonContent) {
+                    const offerData = JSON.parse(jsonContent[0]);
 
-                    // Eğer createOffer dizisi yoksa başlat
+                    // Eğer createOffers dizisi yoksa başlat
                     if (!currentCall.createOffers) {
                         currentCall.createOffers = [];
                     }
 
-                    // ✅ Tarih bilgisini de ekle
-                    if (timestampMatch && timestampMatch[1]) {
-                        parsedOffer.timestamp = timestampMatch[1];
-                    }
+                    // ✅ Timestamp'i ekleyelim
+                    offerData.timestamp = timestamp;
 
-                    // ✅ createOffer'ı diziye ekle
-                    currentCall.createOffers.push(parsedOffer);
-
-                    // 🔴 Geçici Çözüm: Eğer 2. item varsa ve içinde "candidate" geçiyorsa onu kaldır
-                    if (currentCall.createOffers.length > 1) {
-                        const lastIndex = currentCall.createOffers.length - 1;
-                        const lastOffer = currentCall.createOffers[lastIndex];
-
-                        if ("candidate" in lastOffer) {
-                            console.warn("⚠️ Candidate içeren gereksiz createOffer bulundu, kaldırılıyor:", lastOffer);
-                            currentCall.createOffers.pop(); // Son elemanı kaldır
-                        }
-                    }
+                    // ✅ `createOffers` dizisine ekle
+                    currentCall.createOffers.push(offerData);
+                    console.log("✅ createOffer captured:", offerData);
+                } else {
+                    console.warn("⚠️ No valid JSON content found for createOffer.");
                 }
             } catch (e) {
-                console.error("❌ JSON Parse Error in createOffer:", e, jsonStr);
+                console.error("❌ Error parsing createOffer JSON:", e, jsonContent);
             }
         }
+
+        // ✅ "createAnswer" satırlarını al ve JSON'u yakala
+        if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] createAnswer")) {
+            let answerStr = line; // İlk satırı ekle
+            let jsonContent = "";
+            let timestamp = "Unknown Timestamp";
+
+            // ✅ Timestamp'i al
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            if (timestampMatch) {
+                timestamp = timestampMatch[1];
+            }
+
+            // ✅ JSON kapanış süslü parantezi `}` görene kadar devam eden satırları birleştir
+            while (i + 1 < logLines.length) {
+                const nextLine = logLines[++i];
+
+                // Eğer yeni bir tarih satırı geldiyse işlemi durdur
+                if (nextLine.match(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3}/)) {
+                    console.warn("⚠️ Stopping createAnswer capture due to new timestamp.");
+                    i--; // Bir satır geri al ki sonraki if koşulları bozulmasın
+                    break;
+                }
+
+                answerStr += nextLine;
+
+                // JSON kapanış parantezini gördüysek işlemi sonlandır
+                if (nextLine.includes("}")) {
+                    jsonContent = answerStr.match(/\{.*\}/s);
+                    break;
+                }
+            }
+
+            try {
+                if (jsonContent) {
+                    const answerData = JSON.parse(jsonContent[0]);
+
+                    // Eğer createAnswers dizisi yoksa başlat
+                    if (!currentCall.createAnswers) {
+                        currentCall.createAnswers = [];
+                    }
+
+                    // ✅ Timestamp'i ekleyelim
+                    answerData.timestamp = timestamp;
+
+                    // ✅ `createAnswers` dizisine ekle
+                    currentCall.createAnswers.push(answerData);
+                    console.log("✅ createAnswer captured:", answerData);
+                } else {
+                    console.warn("⚠️ No valid JSON content found for createAnswer.");
+                }
+            } catch (e) {
+                console.error("❌ Error parsing createAnswer JSON:", e, jsonContent);
+            }
+        }
+
 
         // ✅ "onnegotiationneeded undefined" satırlarını al ve kaydet
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] onnegotiationneeded undefined")) {
@@ -403,7 +414,7 @@ function parseLogFile(logContent) {
 
         }
 
-      // ✅ "onsignalingstatechange" satırlarını al ve kaydet (Unknown'ları filtrele)
+      // ✅ "onsignalingstatechange" satırlarını al ve kaydet (Unknown'ları filtrele) ***********
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] onsignalingstatechange")) {
 
             // ✅ Timestamp'i al
@@ -430,26 +441,39 @@ function parseLogFile(logContent) {
 
         }
 
-     // ✅ "onicecandidate" satırlarını al ve tam JSON'u kaydet
+// ✅ "onicecandidate" satırlarını al ve tam JSON'u kaydet
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] onicecandidate")) {
 
             let candidateStr = line; // İlk satırı ekle
+            let jsonContent = "";
 
             // ✅ JSON kapanış süslü parantezi `}` görene kadar devam eden satırları birleştir
-            while (i + 1 < logLines.length && !logLines[i + 1].includes("}")) {
-                candidateStr += logLines[++i];
+            while (i + 1 < logLines.length) {
+                const nextLine = logLines[++i];
+
+                // Eğer `getLocalDescription::preTransform` satırını görürsek, işlemeyi durdur
+                if (nextLine.includes("[modules/RTC/TraceablePeerConnection.js] getLocalDescription::preTransform")) {
+                    console.warn("⚠️ Stopping onIceCandidate capture due to 'getLocalDescription::preTransform' line.");
+                    i--; // Bir satır geri al ki sonraki if koşulları bozulmasın
+                    break;
+                }
+
+                candidateStr += nextLine;
+
+                // JSON kapanış parantezini gördüysek işlemi sonlandır
+                if (nextLine.includes("}")) {
+                    jsonContent = candidateStr.match(/\{.*\}/s);
+                    break;
+                }
             }
-            candidateStr += logLines[++i]; // Son satırı da ekle (JSON'un kapanış parantezi)
 
             // ✅ Timestamp'i al
             const timestampMatch = candidateStr.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
             const timestamp = timestampMatch ? timestampMatch[1] : "Unknown Timestamp";
 
             try {
-                // ✅ JSON nesnesini yakala ve parse et
-                const jsonMatch = candidateStr.match(/\{.*\}/s);
-                if (jsonMatch) {
-                    const candidateData = JSON.parse(jsonMatch[0]);
+                if (jsonContent) {
+                    const candidateData = JSON.parse(jsonContent[0]);
 
                     // Eğer `onIceCandidates` dizisi yoksa başlat
                     if (!currentCall.onIceCandidates) {
@@ -461,14 +485,17 @@ function parseLogFile(logContent) {
 
                     // ✅ `onIceCandidates` dizisine ekle
                     currentCall.onIceCandidates.push(candidateData);
+                } else {
+                    console.warn("⚠️ No valid JSON content found for onicecandidate.");
                 }
             } catch (e) {
-                console.error("❌ Error parsing onicecandidate:", e, candidateStr);
+                console.error("❌ Error parsing onicecandidate JSON:", e, jsonContent);
             }
         }
 
+
         // ✅ "addIceCandidate" satırlarını al ve tam JSON'u kaydet
-    if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] addIceCandidate")) {
+       if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] addIceCandidate")) {
 
         let candidateStr = line; // İlk satırı ekle
 
@@ -531,27 +558,51 @@ function parseLogFile(logContent) {
 
         }
 
-        // ✅ "setRemoteDescriptionOnSuccess" satırlarını al ve kaydet
+       // ✅ "setRemoteDescriptionOnSuccess" satırlarını al ve yeni bir tarih satırı görene kadar devam et
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] setRemoteDescriptionOnSuccess")) {
 
-            // ✅ Timestamp'i al
-            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
-            const timestamp = timestampMatch ? timestampMatch[1] : "Unknown Timestamp";
+            let sdpLines = [];
+            let timestamp = "Unknown Timestamp";
 
-            // ✅ "type: offer" veya "type: answer" değerini yakala (Doğru Regex)
-            const typeMatch = line.match(/type:\s*(offer|answer)/);
-            const descriptionType = typeMatch ? typeMatch[1] : "Unknown";
+            // ✅ İlk satırdan timestamp'i al
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            if (timestampMatch) {
+                timestamp = timestampMatch[1];
+            }
+
+            sdpLines.push(line); // İlk satırı ekle
+
+            // ✅ Yeni bir timestamp satırı görene kadar satırları al
+            while (i + 1 < logLines.length) {
+                const nextLine = logLines[++i];
+
+                // ✅ Eğer yeni bir tarih formatında satır geldiyse SDP toplamayı bitir
+                if (nextLine.match(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3}/)) {
+                    i--; // Geri bir adım at, çünkü yeni timestamp satırını tekrar işlememiz gerekecek
+                    break;
+                }
+
+                sdpLines.push(nextLine);
+            }
+
+            // ✅ SDP içeriğini birleştir
+            let sdpContent = sdpLines.join("\n").trim();
+
+            // 🔴 HATA KONTROLÜ: `currentCall` Tanımlı Mı?
+            if (!currentCall) {
+                console.warn("⚠️ HATA: currentCall tanımsız! SDP kaydedilemedi.");
+                return;
+            }
 
             // Eğer setRemoteDescriptionOnSuccess dizisi yoksa başlat
             if (!currentCall.setRemoteDescriptionOnSuccess) {
                 currentCall.setRemoteDescriptionOnSuccess = [];
             }
 
-            // ✅ Bilgiyi diziye ekle
-            currentCall.setRemoteDescriptionOnSuccess.push({ timestamp, type: descriptionType });
+            // ✅ SDP'yi diziye ekle
+            currentCall.setRemoteDescriptionOnSuccess.push({ timestamp, sdp: sdpContent });
 
         }
-
         // ✅ "setLocalDescriptionOnSuccess" satırlarını al ve SDP'yi yakala
         if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] setLocalDescriptionOnSuccess")) {
 
@@ -587,9 +638,6 @@ function parseLogFile(logContent) {
                 return;
             }
 
-            // 🔴 DEBUG: `currentCall` gerçekten aktif çağrı mı?
-            console.log(`📞 Aktif Çağrı: ${currentCall.bipRoomName || "Unknown"}`);
-
             // Eğer setLocalDescriptionOnSuccess dizisi yoksa başlat
             if (!currentCall.setLocalDescriptionOnSuccess) {
                 currentCall.setLocalDescriptionOnSuccess = [];
@@ -597,15 +645,102 @@ function parseLogFile(logContent) {
 
             // ✅ SDP'yi diziye ekle
             currentCall.setLocalDescriptionOnSuccess.push({ timestamp, sdp: sdpContent });
+        }
 
-            console.log(`📡 SDP Kaydedildi (${currentCall.bipRoomName} için):`, { timestamp, sdp: sdpContent });
+        // ✅ "createAnswerOnSuccess" satırlarını al ve yeni bir tarih satırı görene kadar devam et
+        if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] createAnswerOnSuccess::preTransform")) {
+            console.log("🟢 createAnswerOnSuccess başlangıcı bulundu!");
 
-            // 🔴 DEBUG: Şu anki çağrı objesini yazdıralım
-            console.log("🔍 Güncellenmiş currentCall:", JSON.stringify(currentCall, null, 2));
+            let sdpLines = [];
+            let timestamp = "Unknown Timestamp";
+
+            // ✅ İlk satırdan timestamp'i al
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            if (timestampMatch) {
+                timestamp = timestampMatch[1];
+            }
+
+            sdpLines.push(line); // İlk satırı ekle
+
+            // ✅ Yeni bir timestamp satırı görene kadar satırları al
+            while (i + 1 < logLines.length) {
+                const nextLine = logLines[++i];
+
+                // ✅ Eğer yeni bir tarih formatında satır geldiyse SDP toplamayı bitir
+                if (nextLine.match(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3}/)) {
+                    console.log("⏹️ Yeni bir timestamp bulundu, createAnswerOnSuccess yakalama tamamlandı.");
+                    i--; // Geri bir adım at, çünkü yeni timestamp satırını tekrar işlememiz gerekecek
+                    break;
+                }
+
+                sdpLines.push(nextLine);
+            }
+
+            // ✅ SDP içeriğini birleştir
+            let sdpContent = sdpLines.join("\n").trim();
+
+            // 🔴 HATA KONTROLÜ: `currentCall` Tanımlı Mı?
+            if (!currentCall) {
+                console.warn("⚠️ HATA: currentCall tanımsız! SDP kaydedilemedi.");
+                return;
+            }
+
+            // Eğer createAnswerOnSuccess dizisi yoksa başlat
+            if (!currentCall.createAnswerOnSuccess) {
+                currentCall.createAnswerOnSuccess = [];
+            }
+
+            // ✅ SDP'yi diziye ekle
+            currentCall.createAnswerOnSuccess.push({ timestamp, sdp: sdpContent });
+        }
+
+       // ✅ Ice Gathering State değişimlerini al
+        if (collecting && line.includes("[features/base/conference] Ice gathering state changed:")) {
+            console.log(`📡 Ice Gathering Log Line: ${line}`);
+
+            // ✅ Timestamp'i al
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            const timestamp = timestampMatch ? timestampMatch[1] : "Unknown Timestamp";
+
+            // ✅ State değerini al (gathering, complete vb.)
+            const stateMatch = line.match(/Ice gathering state changed:\s*([\w-]+)/);
+            const state = stateMatch ? stateMatch[1].trim() : "Unknown";
+
+            if (state !== "Unknown") {
+                // Eğer iceGatheringStates dizisi yoksa başlat
+                if (!currentCall.iceGatheringStates) {
+                    currentCall.iceGatheringStates = [];
+                }
+
+                // ✅ Ice gathering state bilgisini diziye ekle
+                currentCall.iceGatheringStates.push({ timestamp, state });
+
+                console.log(`✅ Ice Gathering State Saved: ${state} at ${timestamp}`);
+            } else {
+                console.warn(`⚠️ Ice gathering state could not be parsed in line: ${line}`);
+            }
+        }
+
+        // ✅ "[WebrtcModule] ERROR -" hatalarını al ve sakla
+        if (collecting && line.includes("[WebrtcModule] ERROR -")) {
+
+            // ✅ Timestamp'i al
+            const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+            const timestamp = timestampMatch ? timestampMatch[1] : "Unknown Timestamp";
+
+            // ✅ Hata mesajını al
+            const errorMessage = line.split("[WebrtcModule] ERROR -")[1].trim();
+
+            if (!currentCall.webrtcModuleErrors) {
+                currentCall.webrtcModuleErrors = [];
+            }
+
+            currentCall.webrtcModuleErrors.push({ timestamp, message: errorMessage });
         }
 
 
-
+        
+        
         // PEER CONNECTİONS SECTİON ENDED  *****
 
         // ✅ Eğer çağrı başladıysa, connection stats verilerini ekle
@@ -701,76 +836,93 @@ function visualizeCallData(callIndex) {
         participantNumbers = call.participants.join(", ");
     }
 
-    const dateInfo = document.createElement('p');
-    dateInfo.textContent = `Call Date: ${firstTimestamp}`;
-    dateInfo.style.textAlign = 'center';
-    dateInfo.style.width = '100%';
-    dateInfo.style.marginBottom = '5px';
-    dateInfo.style.fontSize = '16px'; 
-    dateInfo.style.fontWeight = 'bold';
-    dateInfo.style.color = '#000';
-    container.appendChild(dateInfo);
-    
-    const endCallInfo = document.createElement('p');
-    endCallInfo.textContent = `End Call Date: ${call.endCallDate || "Unknown"}`;
-    endCallInfo.style.textAlign = 'center';
-    endCallInfo.style.width = '100%';
-    endCallInfo.style.marginBottom = '10px';
-    endCallInfo.style.fontSize = '16px'; 
-    endCallInfo.style.fontWeight = 'bold';
-    endCallInfo.style.color = '#000';
-    container.appendChild(endCallInfo);
-    
-    const callerInfo = document.createElement('p');
-    callerInfo.textContent = `Caller Number: ${callerNumber} | Bip Room Name: ${call.bipRoomName || "Unknown"}`;
-    callerInfo.style.textAlign = 'center';
-    callerInfo.style.width = '100%';
-    callerInfo.style.marginBottom = '10px';
-    callerInfo.style.fontSize = '16px'; 
-    callerInfo.style.fontWeight = 'bold';
-    callerInfo.style.color = '#000';
-    container.appendChild(callerInfo);
-    
-    const participantInfo = document.createElement('p');
-    participantInfo.textContent = `Participants: ${participantNumbers}`;
-    participantInfo.style.textAlign = 'center';
-    participantInfo.style.width = '100%';
-    participantInfo.style.marginBottom = '10px';
-    participantInfo.style.fontSize = '16px'; 
-    participantInfo.style.fontWeight = 'bold';
-    participantInfo.style.color = '#000';
-    container.appendChild(participantInfo);
-    
+    // ✅ Bilgi Kartı (Call Info Card)
+    const infoCard = document.createElement('div');
+    infoCard.style.width = '500px';  // Daha dar genişlik
+    infoCard.style.padding = '8px 12px';
+    infoCard.style.margin = '15px auto';  // Ortalamak için "auto"
+    infoCard.style.borderRadius = '8px';
+    infoCard.style.boxShadow = '0px 2px 6px rgba(0, 0, 0, 0.1)';
+    infoCard.style.backgroundColor = '#fff';
+    infoCard.style.textAlign = 'left';
+    infoCard.style.fontFamily = 'Arial, sans-serif';
+    infoCard.style.border = '1px solid #ddd';
 
+    // ✅ İçerik Satırlarını Oluşturma Fonksiyonu
+    const createInfoRow = (label, value) => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '5px';  // Sağ ve sol yazılar arasındaki boşluğu azalt
+        row.style.fontSize = '13px';  
+        row.style.borderBottom = '1px solid #eee';
+        row.style.padding = '5px 0';
 
+        const labelEl = document.createElement('span');
+        labelEl.textContent = label;
+        labelEl.style.fontWeight = 'bold';
+        labelEl.style.color = '#222';
+        labelEl.style.flexShrink = '0'; // Label daralmadan sabit kalsın
 
-    // ✅ Media Constraints
-    if (call.mediaConstraints && call.mediaConstraints.length > 0) {
-        const detailsContainer = document.createElement('details');
-        detailsContainer.style.width = '100%';
-        detailsContainer.style.marginBottom = '10px';
+        const valueEl = document.createElement('span');
+        valueEl.textContent = value;
+        valueEl.style.color = '#555';
+        valueEl.style.flexGrow = '1'; // Değer kısmı genişlesin
+        valueEl.style.overflow = 'hidden';
+        valueEl.style.textOverflow = 'ellipsis';
+        valueEl.style.whiteSpace = 'nowrap';
 
-        const summary = document.createElement('summary');
-        summary.textContent = " Media Constraints";
-        summary.style.cursor = 'pointer';
-        summary.style.fontWeight = 'bold';
-        detailsContainer.appendChild(summary);
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        return row;
+    };
 
-        call.mediaConstraints.forEach((constraint) => {
-            const constraintItem = document.createElement('pre');
-            constraintItem.textContent = `[${constraint.timestamp}] ${JSON.stringify(constraint, null, 2)}`;
-            constraintItem.style.padding = '5px';
-            constraintItem.style.border = '1px solid #ccc';
-            constraintItem.style.borderRadius = '5px';
-            constraintItem.style.marginTop = '5px';
-            constraintItem.style.whiteSpace = 'pre-wrap';
-            constraintItem.style.backgroundColor = '#f9f9f9';
-            constraintItem.style.fontSize = '12px';
-            detailsContainer.appendChild(constraintItem);
-        });
+    // ✅ Bilgileri Kart İçerisine Ekleyelim
+    infoCard.appendChild(createInfoRow("Call Date:", firstTimestamp));
+    infoCard.appendChild(createInfoRow("End Call Date:", call.endCallDate || "Unknown"));
+    infoCard.appendChild(createInfoRow("Caller Number:", callerNumber));
+    infoCard.appendChild(createInfoRow("Bip Room Name:", call.bipRoomName || "Unknown"));
+    infoCard.appendChild(createInfoRow("Participants:", participantNumbers));
 
-        container.appendChild(detailsContainer);
-    }
+    container.appendChild(infoCard);
+
+      // ✅ Media Constraints
+if (call.mediaConstraints && call.mediaConstraints.length > 0) {
+    const detailsContainer = document.createElement('details');
+    detailsContainer.style.width = '100%';
+    detailsContainer.style.marginBottom = '10px';
+
+    const summary = document.createElement('summary');
+    summary.textContent = "Media Constraints";
+    summary.style.cursor = 'pointer';
+    summary.style.fontWeight = 'bold';
+    detailsContainer.appendChild(summary);
+
+    call.mediaConstraints.forEach((constraint) => {
+        const preElement = document.createElement('pre');
+        preElement.className = 'language-log';
+        preElement.style.whiteSpace = 'pre-wrap';
+        preElement.style.wordBreak = 'break-word';
+        preElement.style.overflowX = 'auto';
+        preElement.style.maxWidth = '100%';
+        preElement.style.fontSize = '12px';
+        preElement.style.marginTop = '5px';
+
+        const codeElement = document.createElement('code');
+        preElement.className = 'language-log';;
+
+        codeElement.textContent = `[${constraint.timestamp}]\n${JSON.stringify(constraint, null, 2)}`;
+
+        preElement.appendChild(codeElement);
+        detailsContainer.appendChild(preElement);
+
+        if (window.Prism) {
+            Prism.highlightElement(codeElement);
+        }
+    });
+
+    container.appendChild(detailsContainer);
+}
 
     // ✅ PeerConnection Updates Açılır/Kapanır Yapı
     const peerConnectionDetails = document.createElement('details');
@@ -778,7 +930,7 @@ function visualizeCallData(callIndex) {
     peerConnectionDetails.style.marginBottom = '10px';
 
     const peerSummary = document.createElement('summary');
-    peerSummary.textContent = "🔗 PeerConnection Updates";
+    peerSummary.textContent = "PeerConnection Updates";
     peerSummary.style.cursor = 'pointer';
     peerSummary.style.fontWeight = 'bold';
     peerConnectionDetails.appendChild(peerSummary);
@@ -801,6 +953,7 @@ function visualizeCallData(callIndex) {
 
     addEvent(call.create, "create");
     addEvent(call.createOffers, "createOffer");
+    addEvent(call.createOffers, "createAnswer");
     addEvent(call.onNegotiationNeeded, "onnegotiationneeded");
     addEvent(call.signalingStates, "onsignalingstatechange");
     addEvent(call.onIceCandidates, "onicecandidate");
@@ -809,12 +962,14 @@ function visualizeCallData(callIndex) {
     addEvent(call.addIceCandidates, "addIceCandidates");
     addEvent(call.setLocalDescriptionOnSuccess, "setLocalDescriptionOnSuccess");
     addEvent(call.setRemoteDescriptionOnSuccess, "setRemoteDescriptionOnSuccess");
-
+    addEvent(call.createAnsweronSuccess, "createAnswerOnSuccess");
+    addEvent(call.iceGatheringStates, "iceGatheringStatesChanged");
+    addEvent(call.webrtcModuleErrors, "webrtcModuleErrors");
+    
     
     // ✅ Olayları timestamp'e göre sırala
     allEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    // ✅ Açılır kapanır yapıya ekleyelim
+// ✅ Açılır kapanır yapıya ekleyelim
     allEvents.forEach(event => {
         const details = document.createElement('details');
         const summary = document.createElement('summary');
@@ -822,35 +977,41 @@ function visualizeCallData(callIndex) {
         summary.style.cursor = 'pointer';
         details.appendChild(summary);
 
-        const contentContainer = document.createElement('div');
-        contentContainer.style.padding = '5px';
-        contentContainer.style.border = '1px solid #ccc';
-        contentContainer.style.borderRadius = '5px';
-        contentContainer.style.marginTop = '5px';
-        contentContainer.style.whiteSpace = 'pre-wrap';
-        contentContainer.style.backgroundColor = '#f9f9f9';
-        contentContainer.style.fontSize = '12px';
-        
-        // Eğer event createOfferOnSuccess ise ve içinde SDP varsa, satır satır göstermek için parçala
-        if (event.type === "createOfferOnSuccess" || "setLocalDescriptionOnSuccess" && event.data.sdp) {
-            const sdpLines = event.data.sdp.split("\n");
-            sdpLines.forEach(line => {
-                const lineElement = document.createElement('div');
-                lineElement.textContent = line;
-                contentContainer.appendChild(lineElement);
+        // ✅ Prism.js kullanarak renklendirilmiş log bloğu oluştur
+        const preElement = document.createElement('pre');
+        preElement.className = 'language-log'; // Prism log formatı
+        preElement.style.whiteSpace = 'pre-wrap';
+        preElement.style.wordBreak = 'break-word';
+        preElement.style.overflowX = 'auto';
+        preElement.style.maxWidth = '100%';
+
+        const codeElement = document.createElement('code');
+        codeElement.className = 'language-log';
+
+        // ✅ Eğer SDP varsa ve çok satırlıysa onu ayrı satırlarda göster
+        if (event.data && typeof event.data.sdp === 'string' && (event.data.sdp.includes('\\r\\n') || event.data.sdp.includes('\n'))) {
+            const sdpText = event.data.sdp.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+            codeElement.textContent = `${event.timestamp} ${event.type.toUpperCase()} →\n`;
+            sdpText.split('\n').forEach(line => {
+                codeElement.textContent += `${line}\n`;
             });
         } else {
-            // Diğer JSON içeriklerini normal şekilde gösterelim
-            contentContainer.textContent = JSON.stringify(event.data, null, 2);
+            // ✅ Normal JSON objesini satırlandırarak yaz
+            codeElement.textContent = `${event.timestamp} ${event.type.toUpperCase()} →\n${JSON.stringify(event.data, null, 2)}`;
         }
-        
-        details.appendChild(contentContainer);
+
+        preElement.appendChild(codeElement);
+        details.appendChild(preElement);
         peerLogContainer.appendChild(details);
-        
+
+        // ✅ Prism.js renklendirme uygula
+        if (window.Prism) {
+            Prism.highlightElement(codeElement);
+        }
     });
 
-    peerConnectionDetails.appendChild(peerLogContainer);
-    container.appendChild(peerConnectionDetails);
+peerConnectionDetails.appendChild(peerLogContainer);
+container.appendChild(peerConnectionDetails);
 
     // ✅ Grafikler için zaman serisi verilerini ayarla
     const timestamps = call.connectionStats.map(stat => stat.timestamp || 'Unknown');

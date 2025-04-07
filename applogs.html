@@ -1,18 +1,47 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Application Logs</title>
-    <script src="https://code.highcharts.com/highcharts.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Application Logs</title>
+
+  <!-- Highcharts -->
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+
+  <!-- ✅ PrismJS CSS ve JS (RENKLENDİRME İÇİN) -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.css"
+    rel="stylesheet"
+  />
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-log.min.js"></script>
+
+  <style>
+    /* Prism log blokları için daha ince ve daha kompakt stil */
+    pre.language-log,
+    code.language-log {
+      
+        font-size: 12px;
+        font-weight: normal !important; /* Kalınlığı sıfırla */
+        background: #1e1e1e; /* koyu ama sade arka plan */
+        color: #d4d4d4; /* daha yumuşak yazı rengi */
+        border-radius: 4px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+    }
+    </style>
+    
 </head>
 <body>
-    <h1>Upload Log File</h1>
-    <input type="file" id="logFileInput">
-    <div id="tabContainer" style="margin-bottom: 10px;"></div>
-    <div id="logOutput"></div>
+  <h1>Upload Log File</h1>
+  <input type="file" id="logFileInput" />
+  <p id="loadingMessage" style="display: none; font-weight: bold">
+    Processing log file, please wait...
+  </p>
+  <div id="tabContainer" style="margin-bottom: 10px"></div>
+  <div id="logOutput"></div>
 
-    <script src="applogs.js"></script>
+  <!-- Uygulama Script -->
+  <script src="applogs.js"></script>
 </body>
-
 </html>
