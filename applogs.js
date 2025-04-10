@@ -80,35 +80,35 @@ function parseLogFile(logContent) {
                     // ✅ End Call Date'i çağrı objesine ekle
                     currentCall.endCallDate = endCallTimestamp;
 
-                    // Sıralama için
-                    if (currentCall) {
-                        let allEvents = [];
+                    // // Sıralama için
+                    // if (currentCall) {
+                    //     let allEvents = [];
 
-                        const addEvents = (events, type) => {
-                            if (events && Array.isArray(events)) {
-                                events.forEach(event => {
-                                    if (event.timestamp) {
-                                        allEvents.push({ ...event, type });
-                                    }
-                                });
-                            }
-                        };
+                    //     const addEvents = (events, type) => {
+                    //         if (events && Array.isArray(events)) {
+                    //             events.forEach(event => {
+                    //                 if (event.timestamp) {
+                    //                     allEvents.push({ ...event, type });
+                    //                 }
+                    //             });
+                    //         }
+                    //     };
 
-                        addEvents(currentCall.mediaConstraints, "mediaConstraints");
-                        addEvents(currentCall.create, "create");
-                        addEvents(currentCall.createOffers, "createOffers");
-                        addEvents(currentCall.onNegotiationNeeded, "onNegotiationNeeded");
-                        addEvents(currentCall.createOfferOnSuccess, "createOfferOnSuccess");
-                        addEvents(currentCall.signalingStates, "signalingStates");
-                        addEvents(currentCall.onIceCandidates, "onIceCandidates");
-                        addEvents(currentCall.onIceConnectionStateChanges, "onIceConnectionStateChanges");
+                    //     addEvents(currentCall.mediaConstraints, "mediaConstraints");
+                    //     addEvents(currentCall.create, "create");
+                    //     addEvents(currentCall.createOffers, "createOffers");
+                    //     addEvents(currentCall.onNegotiationNeeded, "onNegotiationNeeded");
+                    //     addEvents(currentCall.createOfferOnSuccess, "createOfferOnSuccess");
+                    //     addEvents(currentCall.signalingStates, "signalingStates");
+                    //     addEvents(currentCall.onIceCandidates, "onIceCandidates");
+                    //     addEvents(currentCall.onIceConnectionStateChanges, "onIceConnectionStateChanges");
 
-                        allEvents.sort((a, b) => {
-                            return new Date(a.timestamp) - new Date(b.timestamp);
-                        });
+                    //     allEvents.sort((a, b) => {
+                    //         return new Date(a.timestamp) - new Date(b.timestamp);
+                    //     });
 
-                        currentCall.sortedEvents = allEvents;
-                    }
+                    //     currentCall.sortedEvents = allEvents;
+                    // }
 
                     // ✅ ConnectionStats boş değilse çağrıyı ekle
                     if (currentCall.connectionStats.length > 0) {
@@ -883,6 +883,20 @@ function visualizeCallData(callIndex) {
     infoCard.appendChild(createInfoRow("Caller Number:", callerNumber));
     infoCard.appendChild(createInfoRow("Bip Room Name:", call.bipRoomName || "Unknown"));
     infoCard.appendChild(createInfoRow("Participants:", participantNumbers));
+    // ✅ Süre Hesaplama (Duration)
+    let durationText = "Unknown";
+    if (call.endCallDate && firstTimestamp !== "Unknown Timestamp") {
+        const start = new Date(firstTimestamp);
+        const end = new Date(call.endCallDate);
+        const durationMs = end - start;
+
+        if (!isNaN(durationMs)) {
+            const minutes = Math.floor(durationMs / 60000);
+            const seconds = Math.floor((durationMs % 60000) / 1000);
+            durationText = `${minutes}m ${seconds}s`;
+        }
+    }
+    infoCard.appendChild(createInfoRow("Duration:", durationText));
 
     container.appendChild(infoCard);
 
@@ -953,7 +967,7 @@ if (call.mediaConstraints && call.mediaConstraints.length > 0) {
 
     addEvent(call.create, "create");
     addEvent(call.createOffers, "createOffer");
-    addEvent(call.createOffers, "createAnswer");
+    addEvent(call.createAnswers, "createAnswer");
     addEvent(call.onNegotiationNeeded, "onnegotiationneeded");
     addEvent(call.signalingStates, "onsignalingstatechange");
     addEvent(call.onIceCandidates, "onicecandidate");
@@ -962,7 +976,7 @@ if (call.mediaConstraints && call.mediaConstraints.length > 0) {
     addEvent(call.addIceCandidates, "addIceCandidates");
     addEvent(call.setLocalDescriptionOnSuccess, "setLocalDescriptionOnSuccess");
     addEvent(call.setRemoteDescriptionOnSuccess, "setRemoteDescriptionOnSuccess");
-    addEvent(call.createAnsweronSuccess, "createAnswerOnSuccess");
+    addEvent(call.createAnswerOnSuccess, "createAnswerOnSuccess");
     addEvent(call.iceGatheringStates, "iceGatheringStatesChanged");
     addEvent(call.webrtcModuleErrors, "webrtcModuleErrors");
     
@@ -973,7 +987,11 @@ if (call.mediaConstraints && call.mediaConstraints.length > 0) {
     allEvents.forEach(event => {
         const details = document.createElement('details');
         const summary = document.createElement('summary');
-        summary.textContent = `${event.timestamp} ▶ ${event.type}`;
+        if (event.type === 'webrtcModuleErrors') {
+            summary.innerHTML = `${event.timestamp} <span style="color: red;">${event.type}</span>`;
+        } else {
+            summary.textContent = `${event.timestamp} ${event.type}`;
+        }
         summary.style.cursor = 'pointer';
         details.appendChild(summary);
 
@@ -1017,10 +1035,10 @@ container.appendChild(peerConnectionDetails);
     const timestamps = call.connectionStats.map(stat => stat.timestamp || 'Unknown');
 
     const metrics = [
-        { name: 'Audio Upload Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.upload) || 0), unit: 'kbps' },
-        { name: 'Audio Download Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.download) || 0), unit: 'kbps' },
-        { name: 'Video Upload Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.upload) || 0), unit: 'kbps' },
-        { name: 'Video Download Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.download) || 0), unit: 'kbps' },
+  //    { name: 'Audio Upload Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.upload) || 0), unit: 'kbps' },
+  //    { name: 'Audio Download Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.download) || 0), unit: 'kbps' },
+  //    { name: 'Video Upload Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.upload) || 0), unit: 'kbps' },
+  //    { name: 'Video Download Bitrate', data: call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.download) || 0), unit: 'kbps' },
         { name: 'Packet Loss', data: call.connectionStats.map(stat => parseInt(stat.packetLoss?.total) || 0), unit: 'Value' },
         { 
             name: 'RTT (Round Trip Time)', 
@@ -1033,16 +1051,108 @@ container.appendChild(peerConnectionDetails);
             unit: 'ms'
         }
     ];
+    // ✅ Video Upload & Download tek grafikte
 
-    // ✅ Grafikler Çiziliyor (Grafik kısmına dokunulmadı)
+    const videoUpload = call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.upload) || 0);
+    const videoDownload = call.connectionStats.map(stat => parseInt(stat.bitrate?.video?.download) || 0);
+
+    if (videoUpload.some(v => v > 0) || videoDownload.some(v => v > 0)) {
+        metrics.unshift({
+            name: 'Video Upload/Download Bitrate',
+            unit: 'kbps',
+            data: [
+                { name: 'Upload', data: videoUpload },
+                { name: 'Download', data: videoDownload }
+            ]
+        });
+    }
+
+    // ✅ Audio Upload & Download tek grafikte
+    const audioUpload = call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.upload) || 0);
+    const audioDownload = call.connectionStats.map(stat => parseInt(stat.bitrate?.audio?.download) || 0);
+
+   if (audioUpload.some(v => v > 0) || audioDownload.some(v => v > 0)) {
+    metrics.unshift({
+        name: 'Audio Upload/Download Bitrate',
+        unit: 'kbps',
+        data: [
+            { name: 'Upload', data: audioUpload },
+            { name: 'Download', data: audioDownload }
+        ]
+    });
+}
+
+   let widthSeries = [];
+    let heightSeries = [];
+    let framerateSeries = [];
+
+    call.connectionStats.forEach(stat => {
+        if (stat.resolution) {
+            let parsedResolution;
+            try {
+                parsedResolution = JSON.parse(stat.resolution);
+            } catch (e) {
+                console.error("❌ Error parsing resolution:", e);
+                return;
+            }
+
+            Object.keys(parsedResolution).forEach(streamId => {
+                Object.keys(parsedResolution[streamId]).forEach(trackId => {
+                    const resolutionData = parsedResolution[streamId][trackId];
+
+                    if (resolutionData.width) {
+                        let existingWidthSeries = widthSeries.find(series => series.name === `Width - ${trackId}`);
+                        if (!existingWidthSeries) {
+                            existingWidthSeries = { name: `Width - ${trackId}`, data: [] };
+                            widthSeries.push(existingWidthSeries);
+                        }
+                        existingWidthSeries.data.push(resolutionData.width);
+                    }
+
+                    if (resolutionData.height) {
+                        let existingHeightSeries = heightSeries.find(series => series.name === `Height - ${trackId}`);
+                        if (!existingHeightSeries) {
+                            existingHeightSeries = { name: `Height - ${trackId}`, data: [] };
+                            heightSeries.push(existingHeightSeries);
+                        }
+                        existingHeightSeries.data.push(resolutionData.height);
+                    }
+                });
+            });
+        }
+
+        if (stat.framerate) {
+            Object.keys(stat.framerate).forEach(streamId => {
+                Object.keys(stat.framerate[streamId]).forEach(trackId => {
+                    let existingSeries = framerateSeries.find(series => series.name === `Framerate - ${trackId}`);
+                    if (!existingSeries) {
+                        existingSeries = { name: `Framerate - ${trackId}`, data: [] };
+                        framerateSeries.push(existingSeries);
+                    }
+                    existingSeries.data.push(stat.framerate[streamId][trackId]);
+                });
+            });
+        }
+    });
+
+    if (widthSeries.length > 0 || heightSeries.length > 0) {
+        const resolutionSeries = [...widthSeries, ...heightSeries];
+        metrics.push({ name: 'Resolution (Width & Height)', data: resolutionSeries, unit: 'px' });
+    }
+    if (framerateSeries.length > 0) {
+        metrics.push({ name: 'Framerate', data: framerateSeries, unit: 'fps' });
+    }
+
+
+    // ✅ Grafikler Çiziliyor
     metrics.forEach(metric => {
         const chartContainer = document.createElement('div');
         chartContainer.style.minWidth = "450px";
         chartContainer.style.width = '45%';
         chartContainer.style.margin = '10px';
-
+    
         container.appendChild(chartContainer);
-
+    
         Highcharts.chart(chartContainer, {
             chart: { type: 'line', zoomType: 'x', panning: true, panKey: 'shift' },
             title: { text: metric.name },
@@ -1057,7 +1167,9 @@ container.appendChild(peerConnectionDetails);
                 }
             },
             yAxis: { title: { text: metric.unit } },
-            series: [{ name: metric.name, data: metric.data }]
+            series: metric.name === 'Resolution (Width & Height)' || metric.name === 'Framerate' || metric.name === 'Video Upload/Download Bitrate' || metric.name === 'Audio Upload/Download Bitrate'
+                ? metric.data 
+                : [{ name: metric.name, data: metric.data }]
         });
     });
 }
