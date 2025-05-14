@@ -20,26 +20,64 @@
     /* Prism log blokları için daha ince ve daha kompakt stil */
     pre.language-log,
     code.language-log {
-      
         font-size: 12px;
-        font-weight: normal !important; /* Kalınlığı sıfırla */
-        background: #1e1e1e; /* koyu ama sade arka plan */
-        color: #d4d4d4; /* daha yumuşak yazı rengi */
+        font-weight: normal !important;
+        background: #1e1e1e;
+        color: #d4d4d4;
         border-radius: 4px;
         overflow-x: auto;
         white-space: pre-wrap;
     }
-    </style>
-    
+
+    .controls {
+        margin-bottom: 10px;
+    }
+
+    .controls button {
+    margin-right: 5px;
+    padding: 6px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid #007bff;
+    background-color: #f0f8ff; /* Açık mavi arka plan */
+    color: #007bff; /* Mavi yazı rengi */
+    border-radius: 4px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.controls button:hover {
+    background-color: #007bff; /* Mavi arka plan */
+    color: #fff; /* Beyaz yazı */
+}
+
+details {
+    padding-left: 15px; /* Soldan boşluk */
+    margin-bottom: 5px; /* Biraz boşluk */
+}
+
+
+
+  </style>
 </head>
 <body>
   <h1>Upload Log File</h1>
-  <input type="file" id="logFileInput" />
+  <div id="dropZone" style="width: 100%; padding: 20px; border: 2px dashed #007bff; text-align: center; cursor: pointer; background-color: #f8f9fa;">
+    Drag & Drop or Click to Upload Log File
+</div>
+<p id="loadingMessage" style="display: none; font-weight: bold">Processing log file, please wait...</p>
+
   <p id="loadingMessage" style="display: none; font-weight: bold">
     Processing log file, please wait...
   </p>
+
   <div id="tabContainer" style="margin-bottom: 10px"></div>
-  <div id="logOutput"></div>
+
+  <div class="controls" style="display: none;" id="controlsContainer">
+    <button id="toggleButton">Expand All</button>
+  </div>
+  
+<div id="logOutput"></div>
+
 
   <!-- Uygulama Script -->
   <script src="applogs.js"></script>

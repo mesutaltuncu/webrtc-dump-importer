@@ -1,20 +1,69 @@
-document.getElementById('logFileInput').addEventListener('change', function(event) {
-    const file = event.target.files[0];
+document.addEventListener('DOMContentLoaded', function () {
+    const dropZone = document.getElementById('dropZone');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const controlsContainer = document.getElementById('controlsContainer');
+    const toggleButton = document.getElementById('toggleButton');
 
-    if (file) {
-        document.getElementById('loadingMessage').style.display = 'block'; 
+    dropZone.addEventListener('click', () => {
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.log';
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+        fileInput.click();
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#e2e6ea';
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.style.backgroundColor = '#f8f9fa';
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#f8f9fa';
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+    });
+
+    function handleFile(file) {
+        if (!file) return;
+        
+        loadingMessage.style.display = 'block';
         const reader = new FileReader();
-
-        reader.onload = function(e) {
+        
+        reader.onload = function (e) {
             const logContent = e.target.result;
             parseLogFile(logContent);
 
-            document.getElementById('loadingMessage').style.display = 'none'; 
+            loadingMessage.style.display = 'none';
+            
+            // Eğer `details` elemanları varsa Expand/Collapse butonunu göster
+            const detailsElements = document.querySelectorAll('details');
+            if (detailsElements.length > 0) {
+                controlsContainer.style.display = 'block';
+            }
         };
 
         reader.readAsText(file);
     }
+
+    // ✅ Expand/Collapse Mekanizması
+    toggleButton.addEventListener('click', function () {
+        const detailsElements = document.querySelectorAll('details');
+        const isExpanded = this.textContent === 'Expand All';
+
+        detailsElements.forEach(detail => {
+            detail.open = isExpanded;
+        });
+
+        this.textContent = isExpanded ? 'Collapse All' : 'Expand All';
+    });
 });
+
+
 
 let calls = [];
 let myNumber = null; 
@@ -51,7 +100,9 @@ function parseLogFile(logContent) {
             currentCall = {
                 connectionStats: [],
                 bipRoomName: null,
-                signalingEvents: {} 
+                signalingEvents: {},
+                remoteCandidateType: null,
+                localCandidateType: null
             };
             console.log("📞 Yeni çağrı başlangıcı bulundu:", line);
         }
@@ -1338,11 +1389,7 @@ if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] setLoc
                 console.log("📡 SSRCs updated:", currentCall.ssrcs);
             }
         }
-
-
-
-
-        // ✅ Eğer çağrı başladıysa, connection stats verilerini ekle
+        // Eğer çağrı başladıysa, connection stats verilerini ekle
         if (collecting && currentCall && line.toLowerCase().includes('connection_stats')) {
             const statsJsonMatch = line.match(/CONNECTION_STATS.*?(\{.*\})/);
             const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
@@ -1350,14 +1397,16 @@ if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] setLoc
             if (statsJsonMatch && statsJsonMatch[1]) {
                 try {
                     const stats = JSON.parse(statsJsonMatch[1]);
+
                     if (timestampMatch && timestampMatch[1]) {
                         stats.timestamp = timestampMatch[1];
                     }
 
-                    // ✅ Eğer ilk video datası geldiyse, videoStartTimestamp'i ayarla
-                    if (!currentCall.videoStartTimestamp && stats.bitrate?.video) {
-                        currentCall.videoStartTimestamp = new Date(stats.timestamp).getTime();
-                        console.log(`🎯 Video Start Timestamp Set: ${stats.timestamp}`);
+                    // ✅ Eğer `transport` dizisi varsa ve ilk eleman geçerliyse, remote ve local candidate değerlerini al
+                    if (stats.transport && stats.transport.length > 0) {
+                        const transportData = stats.transport[0];
+                        currentCall.remoteCandidateType = transportData.remoteCandidateType || "N/A";
+                        currentCall.localCandidateType = transportData.localCandidateType || "N/A";
                     }
 
                     currentCall.connectionStats.push(stats);
@@ -1365,8 +1414,8 @@ if (collecting && line.includes("[modules/RTC/TraceablePeerConnection.js] setLoc
                     console.error('❌ Error parsing connection stats:', e);
                 }
             }
-
         }
+
     }
 
     if (calls.length > 0) {
@@ -1526,6 +1575,9 @@ function visualizeCallData(callIndex) {
     infoCard.appendChild(createInfoRow("Caller Number:", callerNumber));
     infoCard.appendChild(createInfoRow("Bip Room Name:", call.bipRoomName || "Unknown"));
     infoCard.appendChild(createInfoRow("Participants:", participantNumbers));
+    infoCard.appendChild(createInfoRow("Remote Candidate Type:", call.remoteCandidateType || "N/A"));
+    infoCard.appendChild(createInfoRow("Local Candidate Type:", call.localCandidateType || "N/A"));
+
     // ✅ Süre Hesaplama (Duration)
     let durationText = "Unknown";
     if (call.endCallDate && firstTimestamp !== "Unknown Timestamp") {
@@ -1595,7 +1647,6 @@ if (call.mediaConstraints && call.mediaConstraints.length > 0) {
     const peerLogContainer = document.createElement('div');
     peerLogContainer.style.fontFamily = 'monospace';
     peerLogContainer.style.whiteSpace = 'pre-wrap';
-    peerLogContainer.style.marginLeft = '20px';
 
     // ✅ PeerConnection ile ilgili tüm olayları tarih sırasına göre sıralayalım
     let allEvents = [];
