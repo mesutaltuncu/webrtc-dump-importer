@@ -51,7 +51,7 @@ function decompress(baseStats, newStats) {
           lines.forEach(line => {
               if (line.length) {
                   const data = JSON.parse(line);
-                  const time = new Date(data.time || data[data.length - 1]);
+                  const time = new Date(data.time || data[data.length - 2]);
                   delete data.time;
                   switch(data[0]) {
                   case 'getUserMedia':
@@ -342,10 +342,10 @@ function decompress(baseStats, newStats) {
                 
                   if (stats[id].type === 'localcandidate' || stats[id].type === 'remotecandidate') return;
                   if (!(
-                    (stats[id].type === "inbound-rtp" && stats[id].mediaType === "audio") ||
-                    (stats[id].type === "outbound-rtp" && stats[id].mediaType === "audio") || 
-                    (stats[id].type === "inbound-rtp" && stats[id].mediaType === "video") ||
-                    (stats[id].type === "outbound-rtp" && stats[id].mediaType === "video") ||
+                    (stats[id].type === "inbound-rtp" && stats[id].kind === "audio") ||
+                    (stats[id].type === "outbound-rtp" && stats[id].kind === "audio") || 
+                    (stats[id].type === "inbound-rtp" && stats[id].kind === "video") ||
+                    (stats[id].type === "outbound-rtp" && stats[id].kind === "video") ||
                      // candidate-pair tipi ve bytes değerleri sıfır olmayanlar
                     (stats[id].type === 'candidate-pair' && stats[id].state === 'succeeded' &&
                     (stats[id].bytesSent > 0 || (stats[id].bytesReceived > 0 && stats[id].bytesSent > 0) ))
@@ -362,7 +362,7 @@ function decompress(baseStats, newStats) {
                   }
 
                     // id'ye karşılık gelen mediaType'ı alıp kaydediyoruz
-                    const mediaType = stats[id].mediaType || null;
+                    const mediaType = stats[id].kind || null;
                     if (mediaType) {
                         mediaTypes[id] = mediaType; // id'yi ve mediaType'ı kaydediyoruz
                     }
