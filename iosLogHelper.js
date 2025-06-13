@@ -61,7 +61,9 @@ function parseIosLine(line, state) {
             bipRoomName: null,
             signalingEvents: {},
             remoteCandidateType: null,
-            localCandidateType: null
+            localCandidateType: null,
+            codecInfo: null  
+
         };
         console.log("📞 Yeni çağrı başlangıcı bulundu:", line);
     }
@@ -1145,32 +1147,57 @@ if (state.collecting && line.includes("[VoIP] - MaxVersion: 0.0.0 - Drop: false 
         }
     }
 
-    // ✅ Eğer çağrı başladıysa, connection stats verilerini ekle
-    if (state.collecting && state.currentCall && line.toLowerCase().includes("connection_stats")) {
-        const statsJsonMatch = line.match(/CONNECTION_STATS.*?(\{.*\})/);
-        const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
+// ✅ Eğer çağrı başladıysa, connection stats verilerini ekle
+if (state.collecting && state.currentCall && line.toLowerCase().includes("connection_stats")) {
+    const statsJsonMatch = line.match(/CONNECTION_STATS.*?(\{.*\})/);
+    const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}:\d{3})/);
 
-        if (statsJsonMatch && statsJsonMatch[1]) {
-            try {
-                const stats = JSON.parse(statsJsonMatch[1]);
+    if (statsJsonMatch && statsJsonMatch[1]) {
+        try {
+            const stats = JSON.parse(statsJsonMatch[1]);
 
-                if (timestampMatch && timestampMatch[1]) {
-                    stats.timestamp = timestampMatch[1];
-                }
-
-                // ✅ Eğer `transport` dizisi varsa, remote ve local candidate bilgilerini al
-                if (stats.transport && stats.transport.length > 0) {
-                    const transportData = stats.transport[0];
-                    state.currentCall.remoteCandidateType = transportData.remoteCandidateType || "N/A";
-                    state.currentCall.localCandidateType = transportData.localCandidateType || "N/A";
-                }
-
-                state.currentCall.connectionStats.push(stats);
-            } catch (e) {
-                console.error("❌ Error parsing connection stats:", e);
+            if (timestampMatch && timestampMatch[1]) {
+                stats.timestamp = timestampMatch[1];
             }
+
+            // ✅ Eğer `transport` dizisi varsa, remote ve local candidate bilgilerini al
+            if (stats.transport && stats.transport.length > 0) {
+                const transportData = stats.transport[0];
+                state.currentCall.remoteCandidateType = transportData.remoteCandidateType || "N/A";
+                state.currentCall.localCandidateType = transportData.localCandidateType || "N/A";
+            }
+
+            // ✅ codec bilgisi varsa ve daha önce işlenmediyse işle
+            if (
+                stats.codec &&
+                typeof stats.codec === "string" &&
+                (
+                    state.currentCall.codecInfo === null ||
+                    (typeof state.currentCall.codecInfo === 'object' && Object.keys(state.currentCall.codecInfo).length === 0)
+                )
+            ) {
+                try {
+                    const parsedCodec = JSON.parse(stats.codec);
+                    if (Object.keys(parsedCodec).length > 0) {
+                        state.currentCall.codecInfo = parsedCodec;
+                        console.log("🎯 Codec info extracted from CONNECTION_STATS:", parsedCodec);
+                    } else {
+                        console.log("⚠️ Empty codec object skipped");
+                    }
+                } catch (e) {
+                    console.warn("❌ Codec JSON parse failed:", e);
+                }
+            }
+
+            state.currentCall.connectionStats.push(stats);
+        } catch (e) {
+            console.error("❌ Error parsing connection stats:", e);
         }
     }
+}
+
+
+
 
 }
 

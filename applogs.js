@@ -267,6 +267,40 @@ function visualizeCallData(callIndex) {
 
     container.appendChild(infoCard);
 
+    if (call.codecInfo) {
+        const codecDetails = document.createElement("details");
+        codecDetails.style.width = '100%';
+        codecDetails.style.marginBottom = '10px';
+    
+        const summary = document.createElement("summary");
+        summary.textContent = "🎙️ Codec Info (Raw JSON)";
+        summary.style.cursor = "pointer";
+        summary.style.fontWeight = "bold";
+        codecDetails.appendChild(summary);
+    
+        const pre = document.createElement("pre");
+        pre.className = "language-json";
+        pre.style.whiteSpace = "pre-wrap";
+        pre.style.wordBreak = "break-word";
+        pre.style.overflowX = "auto";
+        pre.style.paddingLeft = "10px";
+        pre.style.fontSize = "12px";
+    
+        const code = document.createElement("code");
+        code.className = "language-json";
+        code.textContent = JSON.stringify(call.codecInfo, null, 2);
+    
+        pre.appendChild(code);
+        codecDetails.appendChild(pre);
+        container.appendChild(codecDetails);
+    
+        if (window.Prism && Prism.highlightElement) {
+            requestAnimationFrame(() => Prism.highlightElement(code));
+        }
+    }
+    
+     
+
       // ✅ Media Constraints
 if (call.mediaConstraints && call.mediaConstraints.length > 0) {
     const detailsContainer = document.createElement('details');

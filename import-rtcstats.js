@@ -328,6 +328,8 @@ function decompress(baseStats, newStats) {
       let lastStats;
   
       const candidatePairData = [];
+      const collectedCodecs = [];
+
 
     // Burada mediaType'ı almak için `stats` objesinden erişim sağlıyoruz
     const mediaTypes = {};
@@ -341,6 +343,13 @@ function decompress(baseStats, newStats) {
               Object.keys(stats).forEach(id => {
                 
                   if (stats[id].type === 'localcandidate' || stats[id].type === 'remotecandidate') return;
+                  if (stats[id].type === 'codec') {
+                        // Eğer zaten eklenmişse tekrar ekleme
+                        const alreadyExists = collectedCodecs.some(codec => codec.payloadType === stats[id].payloadType && codec.mimeType === stats[id].mimeType);
+                        if (!alreadyExists) {
+                            collectedCodecs.push(stats[id]);
+                        }
+                }
                   if (!(
                     (stats[id].type === "inbound-rtp" && stats[id].kind === "audio") ||
                     (stats[id].type === "outbound-rtp" && stats[id].kind === "audio") || 
@@ -519,11 +528,14 @@ function decompress(baseStats, newStats) {
       const whiteList = [
         "bytesReceived",
         "bytesSent",
+        "packetsReceived",
+        "packetsSent",
         "frameWidth",
         "frameHeight",
         "framesPerSecond",
         "packetsLost",
         "currentRoundTripTime",
+        "jitter",
       ];
 
     // saniye bazlı çizilecek 5 dakikalık zoomlu grafikler
@@ -629,9 +641,12 @@ for (const reportname in series) {
                     ? (value - prevValue) / timeDiff
                     : value;
 
-                const formattedValue = (name === "currentRoundTripTime")
-                    ? Math.round(value * 1000) // 0.062 -> 62
-                    : Math.round(valuePerSecond * 100) / 100; // Diğerleri için 2 ondalık basamak
+                const formattedValue =
+                    name === "currentRoundTripTime"
+                      ? Math.round(value * 1000) // 0.062 -> 62
+                      : name === "jitter"
+                        ? valuePerSecond // 🔹 hiç yuvarlama yok
+                        : Math.round(valuePerSecond * 100) / 100; // Diğerleri için 2 ondalık basamak
 
                 if (formattedValue >= 0) {
                     processedData.push([timestamp, formattedValue]);

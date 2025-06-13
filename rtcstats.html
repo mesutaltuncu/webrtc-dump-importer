@@ -52,11 +52,40 @@ ice.style['text-align'] = 'center';
         </style>
     </head>
     <body>
-        <form><input type="file" onchange="doImport(event)"></form>
+        <div id="dropZone" style="width: 100%; padding: 20px; border: 2px dashed #007bff; text-align: center; cursor: pointer; background-color: #f8f9fa;">
+        Drag & Drop or Click to Upload RTCStats File
+        <input type="file" id="fileInput" style="display:none" onchange="doImport(event)" />
+        </div>
         <div><b>User Agent:</b> <span id="userAgent"></span></div>
         <div id="tables">
         </div>
         <div id="container" style="min-width: 95%; height: 400px; margin: 0 auto">
         </div>
+
+        <script>
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#e9ecef';
+    });
+
+    dropZone.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#f8f9fa';
+    });
+
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.style.backgroundColor = '#f8f9fa';
+        const file = e.dataTransfer.files[0];
+        fileInput.files = e.dataTransfer.files;
+        fileInput.dispatchEvent(new Event('change'));
+    });
+    </script>
+
     </body>
 </html>
