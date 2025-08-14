@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
         
         reader.onload = function (e) {
             const logContent = e.target.result;
-            parseLogFile(logContent);
+            parseLogFile(logContent, file.name);
 
             loadingMessage.style.display = 'none';
             
@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 let calls = [];
 
-function parseLogFile(logContent) {
+function parseLogFile(logContent, fileName) {
     const logLines = logContent.split('\n');
     calls = [];
 
@@ -82,9 +82,16 @@ function parseLogFile(logContent) {
         i: 0,
     };
 
+    console.log('✅ busraaa ', state);
+
     for (state.i = 0; state.i < logLines.length; state.i++) {
         const line = logLines[state.i];
-        window.parseIosLine(line, state);
+        if (fileName === "ApplicationLogs.txt") {
+            window.parseIosLine(line, state);
+        } else {
+            window.parseAndroidLine(line, state);
+        }
+        
     }
 
     calls = state.calls;
