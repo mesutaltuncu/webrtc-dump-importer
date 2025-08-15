@@ -82,8 +82,6 @@ function parseLogFile(logContent, fileName) {
         i: 0,
     };
 
-    console.log('✅ busraaa ', state);
-
     for (state.i = 0; state.i < logLines.length; state.i++) {
         const line = logLines[state.i];
         if (fileName === "ApplicationLogs.txt") {
